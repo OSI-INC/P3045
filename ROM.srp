@@ -1,0 +1,29 @@
+SCUBA, Version Diamond (64-bit) 3.12.1.454
+Tue Jul 19 15:28:53 2022
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2020 Lattice Semiconductor Corporation,  All rights reserved.
+
+    Issued command   : C:\lscc\diamond\3.12\ispfpga\bin\nt64\scuba.exe -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type romblk -device LCMXO2-1200ZE -addr_width 12 -data_width 8 -num_words 4096 -cascade 11 -memfile c:/kevan/a3041/p3041/ROM.mem -memformat hex 
+    Circuit name     : ROM
+    Module type      : EBR_ROM
+    Module Version   : 5.4
+    Ports            : 
+	Inputs       : Address[11:0], OutClock, OutClockEn, Reset
+	Outputs      : Q[7:0]
+    I/O buffer       : not inserted
+    Memory file      : c:/kevan/a3041/p3041/ROM.mem
+    EDIF output      : ROM.edn
+    VHDL output      : ROM.vhd
+    VHDL template    : ROM_tmpl.vhd
+    VHDL testbench    : tb_ROM_tmpl.vhd
+    VHDL purpose     : for synthesis and simulation
+    Bus notation     : big endian
+    Report output    : ROM.srp
+    Element Usage    :
+          DP8KC : 4
+    Estimated Resource Usage:
+            EBR : 4

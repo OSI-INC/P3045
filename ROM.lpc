@@ -1,0 +1,52 @@
+[Device]
+Family=machxo2
+PartType=LCMXO2-1200ZE
+PartName=LCMXO2-1200ZE-1UWG25ITR
+SpeedGrade=1
+Package=WLCSP25
+OperatingCondition=IND
+Status=S
+
+[IP]
+VendorName=Lattice Semiconductor Corporation
+CoreType=LPM
+CoreStatus=Demo
+CoreName=ROM
+CoreRevision=5.4
+ModuleName=ROM
+SourceFormat=VHDL
+ParameterFileVersion=1.0
+Date=07/19/2022
+Time=15:28:53
+
+[Parameters]
+Verilog=0
+VHDL=1
+EDIF=1
+Destination=Synplicity
+Expression=BusA(0 to 7)
+Order=Big Endian [MSB:LSB]
+IO=0
+Address=4096
+Data=8
+enByte=0
+ByteSize=9
+OutputEn=0
+ClockEn=0
+Optimization=Area
+Reset=Sync
+Reset1=Sync
+Init=0
+MemFile=c:/kevan/a3041/p3041/ROM.mem
+MemFormat=hex
+EnECC=0
+Pipeline=0
+Write=Normal
+init_data=0
+no_init=0
+
+[FilesGenerated]
+c:/kevan/a3041/p3041/ROM.mem=mem
+
+[Command]
+cmd_line= -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type romblk -device LCMXO2-1200ZE -addr_width 12 -data_width 8 -num_words 4096 -cascade 11 -memfile "c:/kevan/a3041/p3041/ROM.mem" -memformat hex

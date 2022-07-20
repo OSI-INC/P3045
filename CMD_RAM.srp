@@ -1,0 +1,29 @@
+SCUBA, Version Diamond (64-bit) 3.12.1.454
+Tue Apr 12 11:07:35 2022
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2020 Lattice Semiconductor Corporation,  All rights reserved.
+
+    Issued command   : C:\lscc\diamond\3.12\ispfpga\bin\nt64\scuba.exe -w -n CMD_RAM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type ramdps -device LCMXO2-1200ZE -raddr_width 10 -rwidth 8 -waddr_width 10 -wwidth 8 -rnum_words 1024 -wnum_words 1024 -cascade 11 -mem_init0 
+    Circuit name     : CMD_RAM
+    Module type      : RAM_DP
+    Module Version   : 6.5
+    Ports            : 
+	Inputs       : WrAddress[9:0], RdAddress[9:0], Data[7:0], WE, RdClock, RdClockEn, Reset, WrClock, WrClockEn
+	Outputs      : Q[7:0]
+    I/O buffer       : not inserted
+    Memory file      : INIT_ALL_0s
+    EDIF output      : CMD_RAM.edn
+    VHDL output      : CMD_RAM.vhd
+    VHDL template    : CMD_RAM_tmpl.vhd
+    VHDL testbench    : tb_CMD_RAM_tmpl.vhd
+    VHDL purpose     : for synthesis and simulation
+    Bus notation     : big endian
+    Report output    : CMD_RAM.srp
+    Element Usage    :
+          DP8KC : 1
+    Estimated Resource Usage:
+            EBR : 1

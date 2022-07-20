@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DiamondModule name="CMD_RAM" module="CMD_RAM" VendorName="Lattice Semiconductor Corporation" generator="IPexpress" date="2022 04 12 11:07:37.032" version="6.5" type="Module" synthesis="synplify" source_format="VHDL">
+  <Package>
+		<File name="" type="" modified="2022 04 12 11:07:36.970"/>
+		<File name="CMD_RAM.lpc" type="lpc" modified="2022 04 12 11:07:35.847"/>
+		<File name="CMD_RAM.vhd" type="top_level_vhdl" modified="2022 04 12 11:07:35.894"/>
+		<File name="CMD_RAM_tmpl.vhd" type="template_vhdl" modified="2022 04 12 11:07:35.894"/>
+		<File name="tb_CMD_RAM_tmpl.vhd" type="testbench_vhdl" modified="2022 04 12 11:07:35.894"/>
+  </Package>
+</DiamondModule>

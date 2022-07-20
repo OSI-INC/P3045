@@ -39,32 +39,19 @@ entity main is
 	constant ctrl_range : integer := 2;
 	
 -- Memory Map Constants, low nibble addresses in units of bytes;
-	constant mmu_sdb  : integer := 0;  -- Sensor Data Byte
-	constant mmu_scr  : integer := 1;  -- Sensor Control Register
-	constant mmu_irqb : integer := 2;  -- Interrupt Request Bits
-	constant mmu_imsk : integer := 3;  -- Interrupt Mask Bits
-	constant mmu_irst : integer := 4;  -- Interrupt Reset Bits
-	constant mmu_dact : integer := 5;  -- Device Active
-	constant mmu_stc  : integer := 6;  -- Stimulus Current
-	constant mmu_rst  : integer := 7;  -- System Reset
-	constant mmu_xhb  : integer := 8;  -- Transmit HI Byte
-	constant mmu_xlb  : integer := 9;  -- Transmit LO Byte
-	constant mmu_xcn  : integer := 10; -- Transmit Channel Number
-	constant mmu_xcr  : integer := 11; -- Transmit Control Register
-	constant mmu_xfc  : integer := 12; -- Transmit Frequency Calibration
-	constant mmu_etc  : integer := 13; -- Enable Transmit Clock
-	constant mmu_tcf  : integer := 14; -- Transmit Clock Frequency
-	constant mmu_tcd  : integer := 15; -- Transmit Clock Divider
-	constant mmu_bcc  : integer := 16; -- Boost CPU Clock
-	constant mmu_dfr  : integer := 17; -- Diagnostic Flag Register
-	constant mmu_sr   : integer := 18; -- Status Register
-	constant mmu_cch  : integer := 19; -- Command Count HI Byte
-	constant mmu_ccl  : integer := 20; -- Command Count LO Byte
-	constant mmu_crst : integer := 21; -- Command Processor Reset
-	constant mmu_it1p : integer := 22; -- Interrupt Timer One Period
-	constant mmu_it2p : integer := 23; -- Interrupt Timer Two Period
-	constant mmu_it3p : integer := 24; -- Interrupt Timer Three Period
-	constant mmu_it4p : integer := 25; -- Interrupt Timer Four Period
+	constant mmu_irqb : integer := 1;  -- Interrupt Request Bits
+	constant mmu_imsk : integer := 2;  -- Interrupt Mask Bits
+	constant mmu_irst : integer := 3;  -- Interrupt Reset Bits
+	constant mmu_rst  : integer := 4;  -- System Reset
+	constant mmu_dfr  : integer := 5;  -- Diagnostic Flag Register
+	constant mmu_sr   : integer := 6;  -- Status Register
+	constant mmu_it1p : integer := 7;  -- Interrupt Timer One Period
+	constant mmu_it2p : integer := 8;  -- Interrupt Timer Two Period
+	constant mmu_it3p : integer := 9;  -- Interrupt Timer Three Period
+	constant mmu_it4p : integer := 10; -- Interrupt Timer Four Period
+	constant mmu_cch  : integer := 11; -- Command Count HI Byte
+	constant mmu_ccl  : integer := 12; -- Command Count LO Byte
+	constant mmu_crst : integer := 13; -- Command Processor Reset
 end;
 
 architecture behavior of main is
@@ -73,16 +60,11 @@ architecture behavior of main is
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
--- Default Parameter Values.
-	constant tx_low_default : integer := 4;
-	constant tx_channel_default : integer := 1;
-
 -- Power Controller
 	signal USERSTDBY, CLRFLAG, SFLAG, STDBY, RESET : std_logic;
 	attribute syn_keep of RESET : signal is true;
 	attribute nomerge of RESET : signal is "";
 	signal SWRST : boolean := false; -- Software Reset
-	signal DACTIVE : boolean := true; -- Device Active
 	
 -- Diagnostic Flag Register
 	signal df_reg : std_logic_vector(3 downto 0) := (others => '0');
@@ -113,7 +95,7 @@ architecture behavior of main is
 	signal INTZ1, INTZ2, INTZ3, INTZ4 : boolean; -- Interrupt Counter Zero Flag
 	
 -- Byte Receiver
-	signal SDIS, -- Radio Frequency Power Synchronized
+	signal SDIS, -- Serial Data In Synchronized
 		ICMD, -- Initiate Command Reception
 		TCMD, -- Terminate Command Reception
 		RCMD, -- Receive Command
@@ -168,7 +150,7 @@ begin
 		SFLAG => SFLAG);	
 
 	PowerUp: process (CK) is
-		constant end_state : integer := 7;
+		constant end_state : integer := 255;
 		variable state : integer range 0 to end_state := 0;
 	begin
 		if rising_edge(CK) then

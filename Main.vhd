@@ -1,6 +1,8 @@
 -- <pre> Fiber Controller (A3045) Firmware, Toplevel Unit
 
--- V1.1 [19-JUL-22] Based upon P3041 V1.6.
+-- V1.1 [19-JUL-22] Based upon P3041 V1.6. We run the OSR8 exclusively off the
+-- clock input, which we plan to be 32.768 kHz. We run the ring oscillator all
+-- the time to drive the output DACs.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -8,19 +10,20 @@ use ieee.numeric_std.all;
 
 entity main is 
 	port (
-		CK -- Clock
+		CK, -- Clock
+		SDI -- Serial Data In
 		: in std_logic; 
 		DN, -- Digital North
 		DS, -- Digital South
 		DE, -- Digital East
 		DW, -- Digital West
 		SDO, -- Serial Data Out
-		TP1, -- Test Point One
-		TP2 -- Test Point Two
-		: out std_logic;
-		SDI, -- Serial Data In
-		SCK -- Serial Clock
-		: in std_logic	);
+		TP1, -- Test Point One (TMS)
+		TP2, -- Test Point Two (TDI)
+		TP3, -- Test Point Three (TDO)
+		TP4  -- Test Point Four (TCK)
+		: out std_logic
+	);
 
 -- Configuration of OSR8 CPU.
 	constant prog_addr_len : integer := 12;
@@ -52,6 +55,9 @@ entity main is
 	constant mmu_cch  : integer := 11; -- Command Count HI Byte
 	constant mmu_ccl  : integer := 12; -- Command Count LO Byte
 	constant mmu_crst : integer := 13; -- Command Processor Reset
+	
+-- Calibration of DAC Clock
+	constant fck_divisor : integer := 15; 
 end;
 
 architecture behavior of main is
@@ -123,8 +129,8 @@ architecture behavior of main is
 		CPRST -- Command Processor Reset
 		: boolean := false;
 		
--- Stimulus Current Controller
-	signal stimulus_current : integer range 0 to 15;
+-- Digital to Analog Converters
+	signal FCK, DACCK : std_logic;
 
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
@@ -575,13 +581,13 @@ begin
 		state := next_state;
 	end process;
 
--- This process runs all the bits of a command through a sixteen-bit linear shift 
--- register, with local name "crc" for "cyclic redundancy check". We preset crc 
--- to all ones. The final sixteen bits of every command are chosen so that they 
--- reset the crc register to all zeros. If crc is not zero at the end of a command,
--- there was some error during reception. We use the Bit Strobe (BITS) signal to 
--- clock crc, because BITS is asserted only when a command data bit is receive,
--- not when we receive a start or stop bit.
+-- This process runs all the bits of a command through a sixteen-bit linear 
+-- feedback shift register, with local name "crc" for "cyclic redundancy check". 
+-- We preset crc to all ones. The final sixteen bits of every command are chosen 
+-- so that they reset the crc register to all zeros. If crc is not zero at the 
+-- end of a command, there was some error during reception. We use the Bit Strobe 
+-- (BITS) signal to clock crc, because BITS is asserted only when a command data 
+-- bit is receive, not when we receive a start or stop bit.
 	Error_Check : process is
 		variable crc, next_crc : std_logic_vector(15 downto 0) := (others => '1');
 	begin
@@ -749,12 +755,41 @@ begin
 		-- addr variable.
 		cmd_wr_addr <= std_logic_vector(to_unsigned(addr,cmd_addr_len));
 	end process;
+	
+-- Ring Oscillator. This oscillator turns generates FCK, which is around 8 MHz.
+	Fast_CK : entity ring_oscillator port map (
+		ENABLE => '1', 
+		calib => fck_divisor,
+		CK => FCK);
+		
+-- The Digital to Analog Converter Clock (DACCK) should be around 1 MHz, so we divide
+-- FCK by eight.
+	DAC_CK : process (RESET, FCK) is
+		variable count : integer range 0 to 7 := 0;
+	begin
+		if (RESET = '1') then
+			count := 0;
+			DACCK <= '0';
+		elsif rising_edge(FCK) then
+			count := count + 1;
+			if (count >= 4) then
+				DACCK <= '1';
+			else
+				DACCK <= '0';
+			end if;
+		end if;
+	end process;
 
--- Test Point One appears on P4-1.
+-- Test Point One appears on P1-6.
 	TP1 <= df_reg(0);
 	
--- Test Point Two appears on P4-2.
+-- Test Point Two appears on P1-3.
 	TP2 <= df_reg(1);
+	
+-- Test Point Three appears on P1-2.
+	TP3 <= FCK;
 
+-- Test Point Four appears on P1-8.
+	TP4 <= DACCK;
 
 end behavior;

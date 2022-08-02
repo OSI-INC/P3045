@@ -1,8 +1,9 @@
 -- <pre> Fiber Controller (A3045) Firmware, Toplevel Unit
 
 -- V1.1 [19-JUL-22] Based upon P3041 V1.6. We run the OSR8 exclusively off the
--- clock input, which we plan to be 32.768 kHz. We run the ring oscillator all
--- the time to drive the output DACs.
+-- clock input, wich we drive with amicropower 32.768 kHz oscillator. We run 
+-- the ring oscillator continuously to generate DAC Clock (DCK). We enable and 
+-- disable the ring oscillator with ENDCK from the CPU.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -55,6 +56,7 @@ entity main is
 	constant mmu_cch  : integer := 11; -- Command Count HI Byte
 	constant mmu_ccl  : integer := 12; -- Command Count LO Byte
 	constant mmu_crst : integer := 13; -- Command Processor Reset
+	constant mmu_edc  : integer := 14; -- Enable DAC Clock
 	
 -- Calibration of DAC Clock
 	constant fck_divisor : integer := 15; 
@@ -71,7 +73,7 @@ architecture behavior of main is
 	attribute syn_keep of RESET : signal is true;
 	attribute nomerge of RESET : signal is "";
 	signal SWRST : boolean := false; -- Software Reset
-	
+		
 -- Diagnostic Flag Register
 	signal df_reg : std_logic_vector(3 downto 0) := (others => '0');
 
@@ -130,7 +132,11 @@ architecture behavior of main is
 		: boolean := false;
 		
 -- Digital to Analog Converters
-	signal FCK, DACCK : std_logic;
+	signal ENDCK : boolean; -- Enable the DAC Clock
+	signal FCK : std_logic; -- Fast Clock (approx 8 MHz)
+	signal DCK : std_logic; -- DAC Clock (approx 1 MHz)
+	attribute syn_keep of FCK, DCK : signal is true;
+	attribute nomerge of FCK, DCK : signal is "";  
 
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
@@ -260,6 +266,7 @@ begin
 					when mmu_dfr => cpu_data_in(3 downto 0) <= df_reg;
 					when mmu_sr => 
 						cpu_data_in(0) <= to_std_logic(CMDRDY); -- Command Ready Flag
+						cpu_data_in(1) <= to_std_logic(ENDCK);  -- DAC Clock Enabled
 						cpu_data_in(4) <= to_std_logic(CPA);    -- Command Processor Active Flag
 					when mmu_cch => 
 						cpu_data_in(cmd_addr_len-9 downto 0) <= cmd_wr_addr(cmd_addr_len-1 downto 8);
@@ -274,6 +281,7 @@ begin
 		-- CK period. After a reset, the cpu address will not select the SWRST location, so
 		-- SWRST will be cleared on the next falling edge of CK.
 		if (RESET = '1') then
+			ENDCK <= false;
 			int_period_1 <= (others => '0');
 			int_period_2 <= (others => '0');
 			int_period_3 <= (others => '0');
@@ -283,7 +291,7 @@ begin
 			CPRST <= true;
 		-- We use the falling edge of CK to write to registers and to initiate sensor 
 		-- and transmit activity. Some signals we assert only for one CK period, and 
-		-- these we assert as false by default.
+		-- these we assertS as false by default.
 		elsif falling_edge(CK) then
 			CPRST <= false;
 			SWRST <= false;
@@ -302,6 +310,7 @@ begin
 						when mmu_it2p => int_period_2 <= cpu_data_out;
 						when mmu_it3p => int_period_3 <= cpu_data_out;
 						when mmu_it4p => int_period_4 <= cpu_data_out;
+						when mmu_edc => ENDCK <= (cpu_data_out(0) = '1');
 					end case;
 				end if;
 			end if;
@@ -756,26 +765,27 @@ begin
 		cmd_wr_addr <= std_logic_vector(to_unsigned(addr,cmd_addr_len));
 	end process;
 	
--- Ring Oscillator. This oscillator turns generates FCK, which is around 8 MHz.
+-- Ring Oscillator. This oscillator generates FCK, which is around 8 MHz. We enable
+-- the oscilator with Enable DAC Clock (ENDCK) under control of the CPU.
 	Fast_CK : entity ring_oscillator port map (
-		ENABLE => '1', 
+		ENABLE => to_std_logic(ENDCK), 
 		calib => fck_divisor,
 		CK => FCK);
 		
--- The Digital to Analog Converter Clock (DACCK) should be around 1 MHz, so we divide
+-- The Digital to Analog Converter Clock (DCK) should be around 1 MHz, so we divide
 -- FCK by eight.
-	DAC_CK : process (RESET, FCK) is
+	DCK_Generator : process (RESET, FCK) is
 		variable count : integer range 0 to 7 := 0;
 	begin
 		if (RESET = '1') then
 			count := 0;
-			DACCK <= '0';
+			DCK <= '0';
 		elsif rising_edge(FCK) then
 			count := count + 1;
 			if (count >= 4) then
-				DACCK <= '1';
+				DCK <= '1';
 			else
-				DACCK <= '0';
+				DCK <= '0';
 			end if;
 		end if;
 	end process;
@@ -790,6 +800,10 @@ begin
 	TP3 <= FCK;
 
 -- Test Point Four appears on P1-8.
-	TP4 <= DACCK;
+	TP4 <= DCK;
+	
+-- We have no implementation of SDO yet. It is an open-drain output
+-- so we drive it to logic HI to release it.
+	SDO <= '1';
 
 end behavior;

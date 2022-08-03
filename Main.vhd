@@ -14,16 +14,17 @@ entity main is
 		CK, -- Clock
 		SDI -- Serial Data In
 		: in std_logic; 
-		DN, -- Digital North
-		DS, -- Digital South
-		DE, -- Digital East
-		DW, -- Digital West
+		ND, -- North Digital
+		SD, -- South Digital
+		ED, -- East Digital
+		WD, -- West Digital
 		SDO, -- Serial Data Out
 		TP1, -- Test Point One (TMS)
 		TP2, -- Test Point Two (TDI)
 		TP3, -- Test Point Three (TDO)
 		TP4  -- Test Point Four (TCK)
-		: out std_logic
+		: out std_logic;
+		IN1,IN2,IN3,IN4,IN5 : in std_logic -- Dummy Inputs for Routing
 	);
 
 -- Configuration of OSR8 CPU.
@@ -800,7 +801,8 @@ begin
 	TP3 <= FCK;
 
 -- Test Point Four appears on P1-8.
-	TP4 <= DCK;
+	TP4 <= to_std_logic((DCK = '1') or (IN1 = '1') or (IN2 = '1') 
+		or (IN3 = '1') or (IN4 = '1') or (IN5 = '1'));
 	
 -- We have no implementation of SDO yet. It is an open-drain output
 -- so we drive it to logic HI to release it.

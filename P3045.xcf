@@ -19,9 +19,9 @@
 				<BScanLen>1</BScanLen>
 				<BScanVal>0</BScanVal>
 			</Bypass>
-			<File>C:/Kevan/A3041/P3041/impl1/P3041_impl1.jed</File>
-			<FileTime>06/19/22 22:13:48</FileTime>
-			<JedecChecksum>0x5F68</JedecChecksum>
+			<File>C:/Kevan/A3045/P3045/impl1/P3045_impl1.jed</File>
+			<FileTime>08/03/22 18:07:05</FileTime>
+			<JedecChecksum>0x8106</JedecChecksum>
 			<Operation>FLASH Erase,Program,Verify</Operation>
 			<Option>
 				<SVFVendor>JTAG STANDARD</SVFVendor>
@@ -48,5 +48,6 @@
 		<CableName>USB</CableName>
 		<PortAdd>EzUSB-0</PortAdd>
 		<USBID>\\?\usb#vid_1134&amp;amp;pid_8001#5&amp;amp;2527471&amp;amp;0&amp;amp;1#</USBID>
+		<PROGConnect value="TRUE"/>
 	</CableOptions>
 </ispXCF>

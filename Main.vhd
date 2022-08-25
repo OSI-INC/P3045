@@ -795,7 +795,7 @@ begin
 	TP1 <= df_reg(0);
 	
 -- Test Point Two appears on P1-3.
-	TP2 <= df_reg(1);
+	TP2 <= CK;
 	
 -- Test Point Three appears on P1-2.
 	TP3 <= FCK;

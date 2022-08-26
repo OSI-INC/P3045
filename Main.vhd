@@ -5,13 +5,19 @@
 -- the ring oscillator continuously to generate DAC Clock (DCK). We enable and 
 -- disable the ring oscillator with ENDCK from the CPU.
 
+-- V1.2 [26-AUG-22] Three clocks: Reference Clock (RCK) exactly 32.768 kHz, 
+-- Fast Clock (FCK) roughy 8 MHz, Digital to Analog Converter Clock (DCK) roughly
+-- 1 MHz. Arrange for TP4 to be low almost all the time to avoid current through
+-- its pull-down resistor. Send diagnostic flags to electrode outputs. Send ENDCK
+-- to SDO.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity main is 
 	port (
-		CK, -- Clock
+		RCK, -- Clock
 		SDI -- Serial Data In
 		: in std_logic; 
 		ND, -- North Digital
@@ -58,9 +64,7 @@ entity main is
 	constant mmu_ccl  : integer := 12; -- Command Count LO Byte
 	constant mmu_crst : integer := 13; -- Command Processor Reset
 	constant mmu_edc  : integer := 14; -- Enable DAC Clock
-	
--- Calibration of DAC Clock
-	constant fck_divisor : integer := 15; 
+	constant mmu_dcc  : integer := 15; -- DAC Clock Calibration
 end;
 
 architecture behavior of main is
@@ -134,8 +138,9 @@ architecture behavior of main is
 		
 -- Digital to Analog Converters
 	signal ENDCK : boolean; -- Enable the DAC Clock
-	signal FCK : std_logic; -- Fast Clock (approx 8 MHz)
-	signal DCK : std_logic; -- DAC Clock (approx 1 MHz)
+	signal FCK : std_logic; -- Fast Clock (should be approx 8 MHz)
+	signal DCK : std_logic; -- DAC Clock (should be approx 1 MHz)
+	signal fck_divisor : integer := 10;
 	attribute syn_keep of FCK, DCK : signal is true;
 	attribute nomerge of FCK, DCK : signal is "";  
 
@@ -162,11 +167,11 @@ begin
 		STDBY => STDBY,
 		SFLAG => SFLAG);	
 
-	PowerUp: process (CK) is
-		constant end_state : integer := 255;
+	PowerUp: process (RCK) is
+		constant end_state : integer := 7;
 		variable state : integer range 0 to end_state := 0;
 	begin
-		if rising_edge(CK) then
+		if rising_edge(RCK) then
 			CLRFLAG <= to_std_logic(state = 1);
 			USERSTDBY <= to_std_logic(state >= 3);
 			RESET <= to_std_logic((state < end_state) or SWRST);
@@ -184,7 +189,7 @@ begin
 -- start-up with a configuration file, and so may be read after power up to configure
 -- sensor. The configuration data will begin at address zero.
 	RAM : entity RAM port map (
-		Clock => not CK,
+		Clock => not RCK,
 		ClockEn => '1',
         Reset => RESET,
 		WE => RAMWR,
@@ -198,7 +203,7 @@ begin
 -- the program counter.
 	ROM : entity ROM port map (
 		Address => prog_addr,
-        OutClock => not CK,
+        OutClock => not RCK,
         OutClockEn => '1',
         Reset => RESET,	
         Q => prog_data);
@@ -222,13 +227,13 @@ begin
 			IRQ => CPUIRQ,
 			SIG => CPUSIG,
 			RESET => RESET,
-			CK => CK
+			CK => RCK
 		);
 		
 -- The Memory Manager maps eight-bit read and write access to the Sensor Controller, Sample 
 -- Transmitter, Random Access Memory, and Interrupt Handler. Byte ordering is big-endian 
 -- (most significant byte at lower address). 
-	MMU : process (CK,RESET) is
+	MMU : process (RCK,RESET) is
 		variable top_bits : integer range 0 to 7;
 		variable bottom_bits : integer range 0 to 63;
 	begin
@@ -279,8 +284,8 @@ begin
 		
 		-- We use RESET to clear some registers and signals, but not all. We do not clear the
 		-- software reset signal, SWRST, on RESET, since we want SWRST to assert RESET for one
-		-- CK period. After a reset, the cpu address will not select the SWRST location, so
-		-- SWRST will be cleared on the next falling edge of CK.
+		-- RCK period. After a reset, the cpu address will not select the SWRST location, so
+		-- SWRST will be cleared on the next falling edge of RCK.
 		if (RESET = '1') then
 			ENDCK <= false;
 			int_period_1 <= (others => '0');
@@ -290,10 +295,10 @@ begin
 			df_reg <= (others => '0');
 			int_mask <= (others => '0');
 			CPRST <= true;
-		-- We use the falling edge of CK to write to registers and to initiate sensor 
-		-- and transmit activity. Some signals we assert only for one CK period, and 
+		-- We use the falling edge of RCK to write to registers and to initiate sensor 
+		-- and transmit activity. Some signals we assert only for one RCK period, and 
 		-- these we assertS as false by default.
-		elsif falling_edge(CK) then
+		elsif falling_edge(RCK) then
 			CPRST <= false;
 			SWRST <= false;
 			int_rst <= (others => '0');
@@ -312,6 +317,7 @@ begin
 						when mmu_it3p => int_period_3 <= cpu_data_out;
 						when mmu_it4p => int_period_4 <= cpu_data_out;
 						when mmu_edc => ENDCK <= (cpu_data_out(0) = '1');
+						when mmu_dcc => fck_divisor <= to_integer(unsigned(cpu_data_out));
 					end case;
 				end if;
 			end if;
@@ -320,18 +326,18 @@ begin
 
 	-- The Interrupt_Controller provides the interrupt signal to the CPU in response to
 	-- sensor and timer events. By default, at power-up, all interrupts are masked.
-	Interrupt_Controller : process (CK,RESET) is
+	Interrupt_Controller : process (RCK,RESET) is
 	variable counter_1, counter_2, counter_3, counter_4 : integer range 0 to 255;
 	begin
 	
 		-- The interrupt timers, counting down from their interrupt period to zero 
-		-- running off CK. We stop a timer by writing a zero to its interrupt period
+		-- running off RCK. We stop a timer by writing a zero to its interrupt period
 		-- register. Otherwise, they never stop counting down, reloading the period
 		-- value and counting down again. The period register should be loaded with 
 		-- the desired interrupt period minus one, because the count-down includes 
-		-- zero. So 0xFF (255) for the register gives a period of 256 CK periods. 
-		-- We use the falling edge of CK to count down.
-		if falling_edge(CK) then
+		-- zero. So 0xFF (255) for the register gives a period of 256 RCK periods. 
+		-- We use the falling edge of RCK to count down.
+		if falling_edge(RCK) then
 			if (counter_1 = 0) then
 				counter_1 := to_integer(unsigned(int_period_1));
 			else
@@ -354,7 +360,7 @@ begin
 			end if;
 		end if;
 
-		-- The interrupt management runs off CK. On reset, we clear the interrupt 
+		-- The interrupt management runs off RCK. On reset, we clear the interrupt 
 		-- request line and the interrupt bits. We clear the delayed counter zero lines.
 		if (RESET = '1') then
 			CPUIRQ <= false;
@@ -363,7 +369,7 @@ begin
 			INTZ2 <= false;
 			INTZ3 <= false;
 			INTZ4 <= false;
-		elsif rising_edge(CK) then
+		elsif rising_edge(RCK) then
 		
 			-- The timer one interrupt is set when counter_1 goes from value
 			-- one to value zero, and at no other time. We reset when we write 
@@ -410,10 +416,10 @@ begin
 		CPUIRQ <= (int_bits and int_mask) /= "00000000";
 	end process;
 	
--- The Receive Power signal must be synchronized with the CK clock.
+-- The Receive Power signal must be synchronized with the RCK clock.
 	Synchronize_SDI: process is 
 	begin
-		wait until (CK = '0');
+		wait until (RCK = '0');
 		SDIS <= (SDI = '1');
 	end process;
 	
@@ -423,7 +429,7 @@ begin
 		constant endcount : integer := 63;
 		variable counter : integer range 0 to endcount := 0;
 	begin
-		wait until (CK = '1');
+		wait until (RCK = '1');
 		if SDIS then 
 			if (counter = endcount) then 
 				counter := endcount;
@@ -444,7 +450,7 @@ begin
 		constant endcount : integer := 255;
 		variable counter : integer range 0 to endcount := 0;
 	begin
-		wait until (CK = '1');
+		wait until (RCK = '1');
 		if not SDIS then 
 			if (counter = endcount) then 
 				counter := endcount;
@@ -464,7 +470,7 @@ begin
 -- RCMD when Terminate Command (TCMD) occurs.
 	Receive_Command: process is
 	begin
-		wait until (CK = '1');
+		wait until (RCK = '1');
 		if not RCMD then
 			RCMD <= ICMD;
 		else 
@@ -478,7 +484,7 @@ begin
 		variable state, next_state : integer range 0 to 63 := 0;
 		variable no_stop_bit : boolean := false;
 	begin
-		wait until (CK = '1');
+		wait until (RCK = '1');
 		
 		-- Idle state, waiting for Receive Byte Initiate.
 		if (state = 0) then
@@ -573,7 +579,7 @@ begin
 			end if;
 		end loop;
 		
-		-- We assert Command Bit Strobe one CK period before the best moment
+		-- We assert Command Bit Strobe one RCK period before the best moment
 		-- to sample each bit value.
 		if (state = 34) or (state = 30) or (state = 26) or (state = 22) 
 			or (state = 18) or (state = 14) or (state = 10) or (state = 6) then
@@ -583,7 +589,7 @@ begin
 		end if;
 		
 		-- The Byte Strobe signal indicates that we have a start bit and is 
-		-- useful as a test point trigger. It provides a pulse of two CK 
+		-- useful as a test point trigger. It provides a pulse of two RCK 
 		-- periods.
 		BYTS <= (state = 2) or (state = 3);
 		
@@ -601,7 +607,7 @@ begin
 	Error_Check : process is
 		variable crc, next_crc : std_logic_vector(15 downto 0) := (others => '1');
 	begin
-		wait until (CK = '1');
+		wait until (RCK = '1');
 		
 		if ICMD then
 			-- When a new command transmission starts, we preload the cyclic redundancy
@@ -635,13 +641,13 @@ begin
 -- Command Memory
 	Command_Memory : entity CMD_RAM port map (
 		Reset => '0', 
-		WrClock => not CK,
+		WrClock => not RCK,
 		WrClockEn => '1',
 		WE => CMWR,
 		WrAddress => cmd_wr_addr, 
 		Data => cmd_in,
 		RdAddress => cmd_rd_addr,
-		RdClock => not CK,
+		RdClock => not RCK,
 		RdClockEn => '1',
 		Q => cmd_out);
 	
@@ -652,7 +658,7 @@ begin
 -- state. When the command is ready, the CPU can read all bytes out of the Command Memory. 
 -- The Command Processor runs on the reference clock, which is 32.768 kHz, and proceeds to a 
 -- new state every clock cycle. 
-	Command_Processor: process (CK, RESET, CPRST) is
+	Command_Processor: process (RCK, RESET, CPRST) is
 		
 		-- General-purpose state names for the Command Processor
 		constant idle_s : integer := 0;
@@ -673,9 +679,9 @@ begin
 			state := idle_s;
 			addr := 0;
 			
-		-- The Command Processor state machine runs off CK, which allows it to
+		-- The Command Processor state machine runs off RCK, which allows it to
 		-- work with the Byte Receiver.
-		elsif rising_edge(CK) then
+		elsif rising_edge(RCK) then
 			-- Default next state.
 			next_state := idle_s;
 		
@@ -720,6 +726,7 @@ begin
 				end if;
 			end if;
 			CMWR <= to_std_logic(state = store_cmd_s);
+			
 			
 			-- Increment the command address. If we have run out of space in the
 			-- Command Memory, we abort our attempt to process the command, and wait
@@ -791,21 +798,29 @@ begin
 		end if;
 	end process;
 
--- Test Point One appears on P1-6.
-	TP1 <= df_reg(0);
-	
--- Test Point Two appears on P1-3.
-	TP2 <= CK;
-	
--- Test Point Three appears on P1-2.
-	TP3 <= FCK;
-
--- Test Point Four appears on P1-8.
-	TP4 <= to_std_logic((DCK = '1') or (IN1 = '1') or (IN2 = '1') 
-		or (IN3 = '1') or (IN4 = '1') or (IN5 = '1'));
-	
 -- We have no implementation of SDO yet. It is an open-drain output
 -- so we drive it to logic HI to release it.
-	SDO <= '1';
+	SDO <= to_std_logic(ENDCK);
 
+-- We have no implementation for ND, SD, ED, or WD yet.
+	ND <= df_reg(0);
+	SD <= df_reg(1);
+	ED <= df_reg(2);
+	WD <= df_reg(3);
+
+-- Test Point One appears on P1-6.
+	TP1 <= RCK;
+	
+-- Test Point Two appears on P1-3.
+	TP2 <= DCK;
+	
+-- Test Point Three appears on P1-2.
+	TP3 <= SDI;
+
+-- Test Point Four appears on P1-8. We make sure it's
+-- zero, but include our dummy inputs in the equation to
+-- make sure these inputs are retained by the compiler.
+	TP4 <= to_std_logic((IN1 = '1') and (IN2 = '0') 
+		and (IN3 = '0') and (IN4 = '0') and (IN5 = '0'));
+		
 end behavior;

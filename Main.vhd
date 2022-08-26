@@ -6,10 +6,7 @@
 -- disable the ring oscillator with ENDCK from the CPU.
 
 -- V1.2 [26-AUG-22] Three clocks: Reference Clock (RCK) exactly 32.768 kHz, 
--- Fast Clock (FCK) roughy 8 MHz, Digital to Analog Converter Clock (DCK) roughly
--- 1 MHz. Arrange for TP4 to be low almost all the time to avoid current through
--- its pull-down resistor. Send diagnostic flags to electrode outputs. Send ENDCK
--- to SDO.
+-- Digital to Analog Converter Clock (DCK) roughly 10 MHz. 
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -65,6 +62,15 @@ entity main is
 	constant mmu_crst : integer := 13; -- Command Processor Reset
 	constant mmu_edc  : integer := 14; -- Enable DAC Clock
 	constant mmu_dcc  : integer := 15; -- DAC Clock Calibration
+	constant mmu_ndh  : integer := 32; -- North Digital HI Byte
+	constant mmu_ndl  : integer := 33; -- North Digital LO Byte
+	constant mmu_sdh  : integer := 34; -- South Digital HI Byte
+	constant mmu_sdl  : integer := 35; -- South Digital LO Byte
+	constant mmu_edh  : integer := 36; -- East Digital HI Byte
+	constant mmu_edl  : integer := 37; -- East Digital LO Byte
+	constant mmu_wdh  : integer := 38; -- West Digital HI Byte
+	constant mmu_wdl  : integer := 39; -- West Digital LO Byte
+	constant mmu_ds   : integer := 40; -- DAC Step
 end;
 
 architecture behavior of main is
@@ -136,13 +142,17 @@ architecture behavior of main is
 		CPRST -- Command Processor Reset
 		: boolean := false;
 		
--- Digital to Analog Converters
+-- Digital to Analog Converter Clock
 	signal ENDCK : boolean; -- Enable the DAC Clock
-	signal FCK : std_logic; -- Fast Clock (should be approx 8 MHz)
-	signal DCK : std_logic; -- DAC Clock (should be approx 1 MHz)
-	signal fck_divisor : integer := 10;
-	attribute syn_keep of FCK, DCK : signal is true;
-	attribute nomerge of FCK, DCK : signal is "";  
+	signal DCK : std_logic; -- Digital to Analog Converter Clock
+	signal fck_divisor : integer range 0 to 15 := 8;
+	attribute syn_keep of DCK : signal is true;
+	attribute nomerge of DCK : signal is "";  
+	
+-- Digital to Analog Converters
+	signal north_digital,south_digital,east_digital,west_digital :
+		std_logic_vector(15 downto 0);
+	signal dac_step : integer range 0 to 255 := 1;
 
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
@@ -292,6 +302,10 @@ begin
 			int_period_2 <= (others => '0');
 			int_period_3 <= (others => '0');
 			int_period_4 <= (others => '0');
+			north_digital <= "1000000000000000";
+			south_digital <= "1000000000000000";
+			east_digital  <= "1000000000000000";
+			west_digital  <= "1000000000000000";
 			df_reg <= (others => '0');
 			int_mask <= (others => '0');
 			CPRST <= true;
@@ -318,6 +332,15 @@ begin
 						when mmu_it4p => int_period_4 <= cpu_data_out;
 						when mmu_edc => ENDCK <= (cpu_data_out(0) = '1');
 						when mmu_dcc => fck_divisor <= to_integer(unsigned(cpu_data_out));
+						when mmu_ndh => north_digital(15 downto 8) <= cpu_data_out;
+						when mmu_ndl => north_digital(7 downto 0) <= cpu_data_out;
+						when mmu_sdh => south_digital(15 downto 8) <= cpu_data_out;
+						when mmu_sdl => south_digital(7 downto 0) <= cpu_data_out;
+						when mmu_edh => east_digital(15 downto 8) <= cpu_data_out;
+						when mmu_edl => east_digital(7 downto 0) <= cpu_data_out;
+						when mmu_wdh => west_digital(15 downto 8) <= cpu_data_out;
+						when mmu_wdl => west_digital(7 downto 0) <= cpu_data_out;
+						when mmu_ds  => dac_step <= to_integer(unsigned(cpu_data_out));
 					end case;
 				end if;
 			end if;
@@ -773,53 +796,47 @@ begin
 		cmd_wr_addr <= std_logic_vector(to_unsigned(addr,cmd_addr_len));
 	end process;
 	
--- Ring Oscillator. This oscillator generates FCK, which is around 8 MHz. We enable
--- the oscilator with Enable DAC Clock (ENDCK) under control of the CPU.
+-- Ring Oscillator. This oscillator generates DCK. We enable the oscilator with Enable 
+-- Digital to Analog Converter Clock (ENDCK) under control of the CPU.
 	Fast_CK : entity ring_oscillator port map (
 		ENABLE => to_std_logic(ENDCK), 
 		calib => fck_divisor,
-		CK => FCK);
+		CK => DCK);
 		
--- The Digital to Analog Converter Clock (DCK) should be around 1 MHz, so we divide
--- FCK by eight.
-	DCK_Generator : process (RESET, FCK) is
-		variable count : integer range 0 to 7 := 0;
+-- Output_DACs generates the north, south, east and west electrode output signals. These
+-- are sixteen-bit duty-cycle digital to analog conveters. A sixteen-bit counter runs off
+-- DCK, which is roughly 10 MHz. When dac_step is 1, the count completes at 150 Hz and 
+-- we set the duty cycle with a resolution of sixteen bits. When dac_step is 8, the count
+-- completes at 1.2 kHz and the resolution is thirteen bits.
+	Output_DACs: process (DCK) is
+		constant endcount : integer := 65535;
+		variable counter : integer range 0 to endcount := 0;		
 	begin
-		if (RESET = '1') then
-			count := 0;
-			DCK <= '0';
-		elsif rising_edge(FCK) then
-			count := count + 1;
-			if (count >= 4) then
-				DCK <= '1';
-			else
-				DCK <= '0';
-			end if;
+		if rising_edge(DCK) then
+			counter := counter + dac_step;
 		end if;
+		ND <= to_std_logic(counter < to_integer(unsigned(north_digital)));
+		SD <= to_std_logic(counter < to_integer(unsigned(south_digital)));
+		ED <= to_std_logic(counter < to_integer(unsigned(east_digital)));
+		WD <= to_std_logic(counter < to_integer(unsigned(west_digital)));
 	end process;
 
--- We have no implementation of SDO yet. It is an open-drain output
--- so we drive it to logic HI to release it.
-	SDO <= to_std_logic(ENDCK);
-
--- We have no implementation for ND, SD, ED, or WD yet.
-	ND <= df_reg(0);
-	SD <= df_reg(1);
-	ED <= df_reg(2);
-	WD <= df_reg(3);
+-- We have no implementation of SDO yet. We make it high-impedance.
+	SDO <= 'Z';
 
 -- Test Point One appears on P1-6.
-	TP1 <= RCK;
+	TP1 <= df_reg(0);
 	
 -- Test Point Two appears on P1-3.
-	TP2 <= DCK;
+	TP2 <= df_reg(1);
 	
 -- Test Point Three appears on P1-2.
-	TP3 <= SDI;
+	TP3 <= DCK;
 
--- Test Point Four appears on P1-8. We make sure it's
--- zero, but include our dummy inputs in the equation to
--- make sure these inputs are retained by the compiler.
+-- Test Point Four appears on P1-8, which has a 10-kOmega
+-- pull-down resistor. We make sure it's zero, but include 
+-- our dummy inputs in the equation to make sure these inputs 
+-- are retained by the compiler.
 	TP4 <= to_std_logic((IN1 = '1') and (IN2 = '0') 
 		and (IN3 = '0') and (IN4 = '0') and (IN5 = '0'));
 		

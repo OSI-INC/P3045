@@ -4,10 +4,10 @@
 ; This code runs in the OSR8V3 microprocessor of the A3045A.
 
 ; V1: Based upon P3041 v1.6. Change address map to match firmware.
+; Remove uneccessary code. Ramp up North, South, East, West values.
 
 ; Calibration Constants.
 const device_id  0xA123 ; Bottom niblle 1-14.
-const tx_calib        5 ; Transmit frequency calibration
 
 ; Address Map Boundary Constants
 const mmu_vmem 0x0000 ; Base of Variable Memory
@@ -31,6 +31,15 @@ const mmu_ccl  0x080C ; Command Count LO
 const mmu_cpr  0x080D ; Command Processor Reset
 const mmu_edc  0x080E ; Enable DAC Clock
 const mmu_dcc  0x080F ; DAC Clock Calibration
+const mmu_ndh  0x0820 ; North Digital HI Byte
+const mmu_ndl  0x0821 ; North Digital LO Byte
+const mmu_sdh  0x0822 ; South Digital HI Byte
+const mmu_sdl  0x0823 ; South Digital LO Byte
+const mmu_edh  0x0824 ; East Digital HI Byte
+const mmu_edl  0x0825 ; East Digital LO Byte
+const mmu_wdh  0x0826 ; West Digital HI Byte
+const mmu_wdl  0x0827 ; West Digital LO Byte
+const mmu_ds   0x0828 ; DAC Counter Step
 
 ; Status Bit Masks, for use with status register.
 const sr_cmdrdy  0x01 ; Command Ready Flag
@@ -48,8 +57,19 @@ const bit2_clr   0xFB ; Bit Two Clear
 const bit3_clr   0xF7 ; Bit Three Clear
 
 ; Counter constants
-const num_vars    40 ; Number of vars to clear at start.
-const fck_divisor 12 ; Divisor for the ring oscillator. 
+const num_vars   200 ; Number of vars to clear at start.
+const fck_divisor  8 ; Divisor for the ring oscillator. 
+const dac_step     8 ; Increment for sixteen-bit DAC counter.
+
+; DAC Shadow Variables
+const Ndh         0x0000 ; North HI Byte
+const Ndl         0x0001 ; North LO Byte
+const Sdh         0x0002 ; South HI Byte
+const Sdl         0x0003 ; South LO Byte
+const Edh         0x0004 ; East HI Byte
+const Edl         0x0005 ; East LO Byte
+const Wdh         0x0006 ; West HI Byte
+const Wdl         0x0007 ; West LO Byte
 
 ; Command Execution Variables
 const cmd_cnt_h   0x0020 ; Command Count, HI
@@ -196,14 +216,14 @@ interrupt:
 push F              ; Save flags on stack
 push A              ; Save A on stack.
 ld A,(mmu_dfr)      ; Load the diagnostic flag register.
-or A,bit0_mask      ; set bit zero and
+or A,bit2_mask      ; set bit zero and
 ld (mmu_dfr),A      ; write to diagnostic flag register.
 
 
 ; Clear diagnostic flag, pop F and A and return from interrupt.
 
 ld A,(mmu_dfr)      ; Load the diagnostic flag register.
-and A,bit0_clr      ; Clear bit zero and
+and A,bit2_clr      ; Clear bit zero and
 ld (mmu_dfr),A      ; write to diagnostic flag register.
 pop A               ; Restore the A.
 pop F               ; Restore flags.
@@ -369,9 +389,11 @@ inc IX
 call dec_cmd_cnt
 ld A,(IX)           ; Read HI byte of North
 inc IX
+ld (Ndh),A
 call dec_cmd_cnt
 ld A,(IX)           ; Read LO byte of North
 inc IX
+ld (Ndl),A
 call dec_cmd_cnt 
 
 ; Check the number of bytes remaining to be read. If greater
@@ -470,11 +492,14 @@ ld (mmu_irst),A      ; and reset all interrupts.
 ld A,0x00            ; Load zeros
 ld (mmu_imsk),A      ; and disable all interrupts.
 
-; Configure and turn on the DAC clock.
-ld A,fck_divisor
-ld (mmu_dcc),A
-ld A,1
-ld (mmu_edc),A
+; Configure the firmware.
+
+ld A,fck_divisor   ; Set the fast clock divisor,
+ld (mmu_dcc),A     ; which determines the DAC Clock frequency.
+ld A,1             ; Enable the fast clock and therefore
+ld (mmu_edc),A     ; the DAC Clock as well.
+ld A,dac_step      ; Set the resolution and frequency of
+ld (mmu_ds),A      ; of the duty-cycle DACs.
 
 ; The main event loop.
 
@@ -483,9 +508,9 @@ main_loop:
 ; Mark start of execution with a pulse.
 
 ld A,(mmu_dfr)     
-or A,bit2_mask    
+or A,bit0_mask    
 ld (mmu_dfr),A  
-and A,bit2_clr
+and A,bit0_clr
 ld (mmu_dfr),A  
 
 ; Deal with any pending commands.
@@ -499,6 +524,52 @@ main_nocmd:
 ; Update the random number.
 
 call random
+
+; Increment the North DAC value.
+
+ld A,(Ndl)
+add A,1
+ld (Ndl),A
+ld (mmu_ndl),A
+ld A,(Ndh)
+adc A,0
+ld (Ndh),A
+ld (mmu_ndh),A
+
+; Increment the South DAC value.
+
+ld A,(Sdl)
+add A,8
+ld (Sdl),A
+ld (mmu_sdl),A
+ld A,(Sdh)
+adc A,0
+ld (Sdh),A
+ld (mmu_sdh),A
+
+; Increment the East DAC value.
+
+ld A,(Edl)
+add A,64
+ld (Edl),A
+ld (mmu_edl),A
+ld A,(Edh)
+adc A,0
+ld (Edh),A
+ld (mmu_edh),A
+
+; Increment the West DAC value.
+
+ld A,(Wdl)
+add A,0
+ld (Wdl),A
+ld (mmu_wdl),A
+ld A,(Wdh)
+adc A,2
+ld (Wdh),A
+ld (mmu_wdh),A
+
+; Jump back to start of main loop.
 
 jp main_loop
 

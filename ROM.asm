@@ -528,7 +528,7 @@ call random
 ; Increment the North DAC value.
 
 ld A,(Ndl)
-add A,1
+add A,8
 ld (Ndl),A
 ld (mmu_ndl),A
 ld A,(Ndh)
@@ -536,14 +536,14 @@ adc A,0
 ld (Ndh),A
 ld (mmu_ndh),A
 
-; Increment the South DAC value.
+; Decrement the South DAC value.
 
 ld A,(Sdl)
-add A,8
+sub A,8
 ld (Sdl),A
 ld (mmu_sdl),A
 ld A,(Sdh)
-adc A,0
+sbc A,0
 ld (Sdh),A
 ld (mmu_sdh),A
 
@@ -558,14 +558,15 @@ adc A,0
 ld (Edh),A
 ld (mmu_edh),A
 
-; Increment the West DAC value.
+; Decrement the West DAC value.
 
+inc_Wd1:
 ld A,(Wdl)
-add A,0
+sub A,64
 ld (Wdl),A
 ld (mmu_wdl),A
 ld A,(Wdh)
-adc A,2
+sbc A,0
 ld (Wdh),A
 ld (mmu_wdh),A
 

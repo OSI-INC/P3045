@@ -7,7 +7,7 @@
 ; Remove uneccessary code. Ramp up North, South, East, West values.
 
 ; Calibration Constants.
-const device_id  0xA123 ; Bottom niblle 1-14.
+const device_id  0xA123 ; Bottom nibble must be 1-14.
 
 ; Address Map Boundary Constants
 const mmu_vmem 0x0000 ; Base of Variable Memory
@@ -58,10 +58,10 @@ const bit3_clr   0xF7 ; Bit Three Clear
 
 ; Counter constants
 const num_vars   200 ; Number of vars to clear at start.
-const fck_divisor  8 ; Divisor for the ring oscillator. 
+const dck_divisor  8 ; Divisor for the ring oscillator. 
 const dac_step     8 ; Increment for sixteen-bit DAC counter.
 
-; DAC Shadow Variables
+; DAC Shadow Variables.
 const Ndh         0x0000 ; North HI Byte
 const Ndl         0x0001 ; North LO Byte
 const Sdh         0x0002 ; South HI Byte
@@ -79,6 +79,9 @@ const cmd_cnt_l   0x0021 ; Command Count, LO
 const Rand1       0x0030 ; Random Number Byte One
 const Rand0       0x0031 ; Random Number Byte Zero
 
+; Other Flags
+const selftest    0x0032 ; Selftest Flag
+
 ; Global Scratch Registers Variables.
 const scratch1    0x0050 ; Scratchpad Variable 1
 const scratch2    0x0051 ; Scratchpad Variable 2
@@ -87,9 +90,7 @@ const scratch4    0x0053 ; Scratchpad Variable 4
 const scratch5    0x0054 ; Scratchpad Variable 5
 const scratch6    0x0055 ; Scratchpad Variable 6
 
-; Operation Codes. Operands are bytes. A two-byte value
-; passed with an instruction is broken into hi and lo
-; bytes, so is two operands.
+; Command constants.
 const op_shutdown    0 ; 0 operands
 const op_set_north   1 ; 2 operands
 const op_set_south   2 ; 2 operands
@@ -97,6 +98,10 @@ const op_set_east    3 ; 2 operands
 const op_set_west    4 ; 2 operands
 const op_ack         5 ; 1 operand
 const op_identify    6 ; 0 operands
+const op_diagnostic  7 ; 0 operands
+const op_selftest    8 ; 0 operands
+const wildcard_h  0xFF ; Wildcard Identifier, HI
+const wildcard_l  0xFF ; Wildcard Identifier, LO
 
 ; Random Number Generator.
 const rand_taps   0xB4 ; Determines which taps to XOR.
@@ -105,17 +110,19 @@ const rand_taps   0xB4 ; Determines which taps to XOR.
 ; The CPU reserves two locations 0x0000 for the start of program
 ; execution, and 0x0003 for interrupt execution. We put jumps at
 ; both locations. A jump takes exactly three bytes.
+; ------------------------------------------------------------
 
 start:
 
-jp main
+jp initialize
 jp interrupt
 
 ; ---------------------------------------------------------------
 ; Eight-bit multiplier. Load two eight-bit operands into B and C
 ; and the sixteen-bit result will be returned in B (HI) and C (LO). 
 ; Takes 200 to 300 clock cycles depending upon the operand C, an 
-; average of 250 (50 us at 5 MHz or 7.6 ms at 32.768 kHz).
+; average of 250, which is 50 us at 5 MHz or 7.6 ms at 32.768 kHz.
+; ------------------------------------------------------------
 
 multiply:
 
@@ -207,7 +214,10 @@ ret
 
 
 ; ------------------------------------------------------------
-; The interrupt routine. 
+; Interrupt routine. Right now this is a dummy routine that
+; marks its execution with a diagnostic flag and clears the
+; interrupt bits.
+; ------------------------------------------------------------
 
 interrupt:
 
@@ -219,6 +229,10 @@ ld A,(mmu_dfr)      ; Load the diagnostic flag register.
 or A,bit2_mask      ; set bit zero and
 ld (mmu_dfr),A      ; write to diagnostic flag register.
 
+; Reset interrupts.
+
+ld A,0xFF            ; Load A with ones
+ld (mmu_irst),A      ; and reset all interrupts.
 
 ; Clear diagnostic flag, pop F and A and return from interrupt.
 
@@ -230,9 +244,10 @@ pop F               ; Restore flags.
 rti                 ; Return from interrupt.
 
 ; -----------------------------------------------------------
-; Decrement the command count. The decrement does not allow
-; the count to drop below zero. The routine leaves all registers
-; intact.
+; Subroutine: Decrement the Command Count. The decrement does 
+; not allow the count to drop below zero. The routine leaves 
+; all registers intact.
+; -----------------------------------------------------------
 
 dec_cmd_cnt:
 
@@ -257,7 +272,9 @@ pop F
 ret
 
 ; ------------------------------------------------------------
-; Transmit an acknowledgement. 
+; Subroutine: Transmit an Acknowledgement. A dummy routine for
+; now, until we figure out the transmit protocol.
+; -----------------------------------------------------------
 
 xmit_ack:
 
@@ -270,7 +287,9 @@ pop F
 ret
 
 ; ------------------------------------------------------------
-; Transmit an identification message. 
+; Subroutine: Transmit Identifier. A dummy routine for now,
+; until we figure out the transmit protocol.
+; -----------------------------------------------------------
 
 xmit_identify:
 
@@ -283,14 +302,26 @@ pop F
 ret
 
 ; ------------------------------------------------------------
-; Read out, interpret, and execute comands.
+; Subroutine: Comamnd Execute. We read out, interpret, and 
+; execute comands stored in the command buffer. The routine
+; presupposes that a command is available in the buffer. All
+; Commands begin with an two-byte identifier, one or more
+; instructions and a two-byte checksum. The checksum has 
+; already been compared to the value we obtain from the 
+; preceding bytes, so we do not check it here. We instead
+; examine the identifier and proceed through the instructions 
+; only if the identifier matches this device's identifier or
+; is the wildcard identifier. Instructions consist of a sigle-
+; byte opcode and one or more bytes of operands.
+; ------------------------------------------------------------
+
 
 cmd_execute:
 
 ; Push the flags and registers onto the stack and disable interrupts. Allowing 
 ; interrupts while we are decyphering a command creates too many potential 
 ; problems to be worth bothering with. We'll restore the interrupt disable flag
-; to its original state when we pop the flags off the stack before we return.
+; to its original state when we pop the flags off the stack upon return.
 
 push F              
 push A             
@@ -308,11 +339,17 @@ seti
 
 ld A,(mmu_dfr)       
 or A,bit1_mask      
-ld (mmu_dfr),A     
+ld (mmu_dfr),A   
 
-; Calculate and store the command count in memory. We read the wr_cmd_addr and subtract
-; two. We will use the dec_cmd_cnt routine to decrement as we increment through the command
-; memory. If the command count is less than zero, we abort.
+; Clear the self-test flag.
+
+ld A,0x00
+ld (selftest),A  
+
+; Calculate and store the command count in memory. We read the wr_cmd_addr and 
+; subtract two. The result is the number of commands without the two checksum 
+; bytes at the end. We will use the dec_cmd_cnt routine to decrement as we increment 
+; through the command memory. If the command count is less than zero, we abort.
 
 ld A,(mmu_ccl)
 sub A,2
@@ -326,7 +363,8 @@ jp c,cmd_done
 
 ld IX,mmu_cmem
 
-; Load the device id into HL and the command's device id into DE.
+; Load the device identifier into HL and the command's identifier 
+; into DE. We leave IX pointing to the first instruction opcode.
 
 ld HL,device_id
 ld A,(IX)
@@ -356,22 +394,24 @@ sub A,B
 jp nz,cmd_no_match
 jp cmd_loop_start
 
-; If HL is the wildcard identifier 0xFFFF, we'll process this command.
+; If HL is the wildcard identifier, we'll process this command.
 
 cmd_no_match:
 push E
 pop A
-sub A,0xFF
+sub A,wildcard_l
 jp nz,cmd_done
 push D
 pop A
-sub A,0xFF
+sub A,wildcard_h
 jp nz,cmd_done
 
-; Every time we execute this loop, IX should be pointed to the next
-; command byte we want to process.
+; Every time we execute this loop, IX should be pointing to the next
+; instruction opcode.
 
 cmd_loop_start:
+
+; The shutdown command we don't yet know what to do with.
 
 check_op_shutdown:
 ld A,(IX)
@@ -379,22 +419,129 @@ sub A,op_shutdown
 jp nz,check_set_north
 inc IX
 call dec_cmd_cnt
+; Shutdown code will go here.
 jp cmd_loop_end
+
+; Set north takes a two-byte operand, writes the first byte to the
+; North DAC HI byte, and the second byte to the North DAC LO byte.
+; We also write to the shadow registers, which allows us to read back
+; the DAC values in other routines.
 
 check_set_north:
 ld A,(IX)
 sub A,op_set_north
-jp nz,cmd_done
+jp nz,check_set_south
 inc IX
 call dec_cmd_cnt
 ld A,(IX)           ; Read HI byte of North
+ld (mmu_ndh),A      ; and write to DAC
+ld (Ndh),A          ; and shadow register.        
 inc IX
-ld (Ndh),A
 call dec_cmd_cnt
 ld A,(IX)           ; Read LO byte of North
+ld (mmu_ndl),A      ; and write to DAC
+ld (Ndl),A          ; and shadow register.
 inc IX
-ld (Ndl),A
 call dec_cmd_cnt 
+jp cmd_loop_end
+
+; Set south sets the South DAC value.
+
+check_set_south:
+ld A,(IX)
+sub A,op_set_south
+jp nz,check_set_east
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read HI byte of South
+ld (mmu_sdh),A      ; and write to DAC
+ld (Sdh),A          ; and shadow register.
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read LO byte of South
+ld (mmu_sdl),A      ; and write to DAC
+ld (Sdl),A          ; and shadow register.
+inc IX
+call dec_cmd_cnt 
+jp cmd_loop_end
+
+; Set east sets the East DAC value.
+
+check_set_east:
+ld A,(IX)
+sub A,op_set_east
+jp nz,check_set_west
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read HI byte of East
+ld (mmu_edh),A      ; and write to DAC
+ld (Edh),A          ; and shadow register.
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read LO byte of East
+ld (mmu_edl),A      ; and write to DAC
+ld (Edl),A          ; and shadow register.
+inc IX
+call dec_cmd_cnt 
+jp cmd_loop_end
+
+; Set west sets the West DAC value.
+
+check_set_west:
+ld A,(IX)
+sub A,op_set_west
+jp nz,check_ack
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read HI byte of West
+ld (mmu_wdh),A      ; and write to DAC
+ld (Wdh),A          ; and shadow register
+inc IX
+call dec_cmd_cnt
+ld A,(IX)           ; Read LO byte of West
+ld (mmu_wdl),A      ; and write to DAC
+ld (Wdl),A          ; and shadow register.
+inc IX
+call dec_cmd_cnt 
+jp cmd_loop_end
+
+; Acknowledge calls the transmit acknowledgement routine.
+
+check_ack:
+ld A,(IX)
+sub A,op_ack
+jp nz,check_identify
+inc IX
+call dec_cmd_cnt
+call xmit_ack
+jp cmd_loop_end
+
+; The identify instruction calls the transmit identifier routine.
+
+check_identify:
+ld A,(IX)
+sub A,op_identify
+jp nz,check_selftest
+inc IX
+call dec_cmd_cnt
+call xmit_identify
+jp cmd_loop_end
+
+; The self-test instruction sets the self-test flag and the main loop
+; will execute the self-test routine. Note that we clear this flag at
+; the start of the command interpreter, so the absence of a self-test
+; instruction ends the self-test behavior. This is the last opcode in 
+; our list. If we don't get match, we abort by jumping to command done.
+
+check_selftest:
+ld A,(IX)
+sub A,op_selftest
+jp nz,cmd_done
+inc IX
+call dec_cmd_cnt
+ld A,0xFF
+ld (selftest),A
+jp cmd_loop_end
 
 ; Check the number of bytes remaining to be read. If greater
 ; than zero, jump back to start of loop, otherwise we are done.
@@ -407,8 +554,9 @@ ld A,(cmd_cnt_l)
 add A,0
 jp nz,cmd_loop_start
 
-; Now that we are done with command processing, we reset the 
-; command processor and end our pulse on diagnostic flag.
+; Now that we are done with command processing, or we are aborting
+; processing due to an unrecognised opcode, we reset the command 
+; processor and end our pulse on diagnostic flag.
 
 cmd_done:
 ld A,0x01
@@ -436,6 +584,7 @@ ret
 ; ------------------------------------------------------------
 ; The random number generator updates Rand0 and Rand1 with a 
 ; sixteen-bit linear feedback shift register.
+; ------------------------------------------------------------
 
 random:
 
@@ -461,18 +610,18 @@ pop F
 ret
 
 ; ------------------------------------------------------------
-; The main program. We begin by initializing the device, which
-; includes initializing the stack pointer, variables, and interrupts.
+; The initialization routine. We set the stack pointer, zero 
+; variables, and configure interrupts.
+; ------------------------------------------------------------
 
-main:
+initialize:
 
 ; Initialize the stack pointer.
 ld HL,mmu_sba
 ld SP,HL
 
-; Initialize variable locations to zero. This activity also serves
-; as a boot-up delay to let the power supply settle before we
-; calibrate the transmit clock. We are clearing all flags.
+; Initialize variable locations to zero. This sets all flags to
+; zero as well.
 
 ld IX,mmu_vmem
 ld A,num_vars
@@ -492,18 +641,24 @@ ld (mmu_irst),A      ; and reset all interrupts.
 ld A,0x00            ; Load zeros
 ld (mmu_imsk),A      ; and disable all interrupts.
 
-; Configure the firmware.
+; Configure the DAC clock and the digital to analog converters.
 
-ld A,fck_divisor   ; Set the fast clock divisor,
+ld A,dck_divisor   ; Set the DAC clock divisor,
 ld (mmu_dcc),A     ; which determines the DAC Clock frequency.
 ld A,1             ; Enable the fast clock and therefore
 ld (mmu_edc),A     ; the DAC Clock as well.
 ld A,dac_step      ; Set the resolution and frequency of
 ld (mmu_ds),A      ; of the duty-cycle DACs.
 
-; The main event loop.
+; Jump to the main event loop.
 
-main_loop:
+jp main
+
+; ------------------------------------------------------------
+; Main event loop. 
+; ------------------------------------------------------------
+
+main:
 
 ; Mark start of execution with a pulse.
 
@@ -524,6 +679,31 @@ main_nocmd:
 ; Update the random number.
 
 call random
+
+; If the selftest flag is set, call the selftest routine.
+
+ld A,(selftest)
+add A,0
+jp z,main_no_selftest
+call selftest
+main_no_selftest:
+
+; Jump back to start of main loop.
+
+jp main
+
+; ---------------------------------------------------------------
+; Subroutine: Self-Test. We increment two DAC values and decrement 
+; the other two, at two different rates, so we can watch the DAC and 
+; amplifier outputs over their entire range for diagnostics.
+; ---------------------------------------------------------------
+
+selftest:
+
+; Push accumulator and flags.
+
+push F
+push A
 
 ; Increment the North DAC value.
 
@@ -550,7 +730,7 @@ ld (mmu_sdh),A
 ; Increment the East DAC value.
 
 ld A,(Edl)
-add A,64
+add A,32
 ld (Edl),A
 ld (mmu_edl),A
 ld A,(Edh)
@@ -562,7 +742,7 @@ ld (mmu_edh),A
 
 inc_Wd1:
 ld A,(Wdl)
-sub A,64
+sub A,32
 ld (Wdl),A
 ld (mmu_wdl),A
 ld A,(Wdh)
@@ -570,8 +750,8 @@ sbc A,0
 ld (Wdh),A
 ld (mmu_wdh),A
 
-; Jump back to start of main loop.
+; Pop and return.
 
-jp main_loop
-
-; ---------------------------------------------------------------
+pop A
+pop F
+ret

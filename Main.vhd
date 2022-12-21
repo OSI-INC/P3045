@@ -8,6 +8,8 @@
 -- V1.2 [26-AUG-22] Three clocks: Reference Clock (RCK) exactly 32.768 kHz, 
 -- Digital to Analog Converter Clock (DCK) roughly 10 MHz. 
 
+-- V1.3 [21-DEC-22] Build command receiver in software.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -831,7 +833,7 @@ begin
 	TP2 <= df_reg(1);
 	
 -- Test Point Three appears on P1-2.
-	TP3 <= DCK;
+	TP3 <= df_reg(2);
 
 -- Test Point Four appears on P1-8, which has a 10-kOmega
 -- pull-down resistor. We make sure it's zero, but include 

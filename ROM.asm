@@ -80,7 +80,7 @@ const Rand1       0x0030 ; Random Number Byte One
 const Rand0       0x0031 ; Random Number Byte Zero
 
 ; Other Flags
-const selftest    0x0032 ; Selftest Flag
+const stst_flag   0x0032 ; Selftest Flag
 
 ; Global Scratch Registers Variables.
 const scratch1    0x0050 ; Scratchpad Variable 1
@@ -344,7 +344,7 @@ ld (mmu_dfr),A
 ; Clear the self-test flag.
 
 ld A,0x00
-ld (selftest),A  
+ld (stst_flag),A  
 
 ; Calculate and store the command count in memory. We read the wr_cmd_addr and 
 ; subtract two. The result is the number of commands without the two checksum 
@@ -540,7 +540,7 @@ jp nz,cmd_done
 inc IX
 call dec_cmd_cnt
 ld A,0xFF
-ld (selftest),A
+ld (stst_flag),A
 jp cmd_loop_end
 
 ; Check the number of bytes remaining to be read. If greater
@@ -682,7 +682,7 @@ call random
 
 ; If the selftest flag is set, call the selftest routine.
 
-ld A,(selftest)
+ld A,(stst_flag)
 add A,0
 jp z,main_no_selftest
 call selftest
@@ -704,6 +704,10 @@ selftest:
 
 push F
 push A
+
+ld A,(mmu_dfr)     
+or A,bit2_mask    
+ld (mmu_dfr),A 
 
 ; Increment the North DAC value.
 
@@ -749,6 +753,10 @@ ld A,(Wdh)
 sbc A,0
 ld (Wdh),A
 ld (mmu_wdh),A
+
+ld A,(mmu_dfr)     
+and A,bit2_clr    
+ld (mmu_dfr),A    
 
 ; Pop and return.
 

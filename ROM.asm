@@ -7,7 +7,7 @@
 ; Remove uneccessary code. Ramp up North, South, East, West values.
 
 ; Calibration Constants.
-const device_id  0xA123 ; Bottom nibble must be 1-14.
+const device_id  0x8312 ; Bottom nibble must be 1-14.
 
 ; Address Map Boundary Constants
 const mmu_vmem 0x0000 ; Base of Variable Memory

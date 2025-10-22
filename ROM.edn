@@ -4,7 +4,7 @@
   (keywordMap (keywordLevel 0))
   (status
     (written
-      (timestamp 2022 12 21 17 18 43)
+      (timestamp 2024 7 30 16 18 7)
       (program "SCUBA" (version "Diamond (64-bit) 3.12.1.454"))))
       (comment "C:\lscc\diamond\3.12\ispfpga\bin\nt64\scuba.exe -w -n ROM -lang vhdl -synth synplify -bus_exp 7 -bb -arch xo2c00 -type bram -wp 00 -rp 1100 -addr_width 12 -data_width 8 -num_rows 4096 -cascade 11 -memfile c:/kevan/a3045/p3045/rom.mem -memformat hex ")
   (library ORCLIB
@@ -275,7 +275,7 @@
             (property INITVAL_02
               (string "0x12A0703864030611204603454028511204100C410B6690A07118C4110C1900C6914A4108A1900810"))
             (property INITVAL_01
-              (string "0x0C81D12C950082114CD313643028830A8800C810120721B8190823C02290042040DA09048E41D83B"))
+              (string "0x0C81D12C950082114CD313643028830A8800C81012072178190823C02290042040DA09048E41D83B"))
             (property INITVAL_00
               (string "0x01CC408208002300225401EC40EA0C0E213080EC1B495028060044F0861801008014100602707845"))
             (property CSDECODE_B
@@ -465,7 +465,7 @@
             (property INITVAL_02
               (string "0x1820403054020610A04000E04020610A04110A410801C0204110A4100C1500E000E04100C1500818"))
             (property INITVAL_01
-              (string "0x0A814002C100E00080CE0063A0080E1C80E1C81E0A07914810042000C2000E21009812154AA11EA3"))
+              (string "0x0A814002C100E00080CE0063A0080E1C80E1C81E0A07908810042000C2000E21009812154AA11EA3"))
             (property INITVAL_00
               (string "0x1D0F80C21C042080C2080D0F00F8100E81300C8F1FEB901CFB17CC21C0EE0740E1F6B80F06A14030"))
             (property CSDECODE_B

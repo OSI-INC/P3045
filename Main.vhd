@@ -10,6 +10,9 @@
 
 -- V1.3 [21-DEC-22] Build command receiver in software.
 
+-- V1.4 [21-OCT-25] Remove reset of RAM and ROM, because this reset turns out
+-- to be responsible for instability in the VHDL code.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -203,7 +206,7 @@ begin
 	RAM : entity RAM port map (
 		Clock => not RCK,
 		ClockEn => '1',
-        Reset => RESET,
+        Reset => '0',
 		WE => RAMWR,
 		Address => ram_addr, 
 		Data => ram_in,
@@ -217,7 +220,7 @@ begin
 		Address => prog_addr,
         OutClock => not RCK,
         OutClockEn => '1',
-        Reset => RESET,	
+        Reset => '0',	
         Q => prog_data);
 
 -- The processor itself, and eight-bit microprocessor with thirteen-bit address bus.
